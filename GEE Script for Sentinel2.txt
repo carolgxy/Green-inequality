@@ -1,0 +1,69 @@
+var gubFeatures = ee.FeatureCollection("projects/assets/GUB_Global_2018");
+print("areas:", gubFeatures.size());
+
+var years = [2019, 2020, 2021, 2022, 2023, 2024, 2025];
+
+var seasons = {
+  'Spring': ['-03-01', '-06-01'], 
+  'Summer': ['-06-01', '-09-01'],
+  'Autumn': ['-09-01', '-12-01'],
+  'Winter': ['-12-01', '-03-01'] 
+};
+
+
+function getGreenspaceArea(startDate, endDate) {
+  var s2Col = ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED")
+    .filterDate(startDate, endDate)
+    .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 100))
+    .select('SCL');
+
+
+  var vegMask = s2Col.map(function(img) {
+    return img.eq(4);
+  }).max();
+
+  var vegArea = vegMask.multiply(ee.Image.pixelArea()).rename('greenspace_area_m2');
+  
+  return vegArea;
+}
+
+years.forEach(function(year) {
+  Object.keys(seasons).forEach(function(seasonName) {
+    
+    var startDateStr = year + seasons[seasonName][0];
+    var endDateStr;
+    
+    if (seasonName === 'Winter') {
+      endDateStr = (year + 1) + seasons[seasonName][1];
+    } else {
+      endDateStr = year + seasons[seasonName][1];
+    }
+    
+    var areaImage = getGreenspaceArea(startDateStr, endDateStr);
+    
+    var stats = areaImage.reduceRegions({
+      collection: gubFeatures,
+      reducer: ee.Reducer.sum().setOutputs(['greenspace_area_m2']), 
+      scale: 20,
+      crs: 'EPSG:4326',
+      tileScale: 16
+    });
+    
+    var statsCleaned = stats.map(function(f) {
+      var area = f.get('greenspace_area_m2');
+      return f.set('greenspace_area_m2', ee.Algorithms.If(ee.Algorithms.IsEqual(area, null), 0, area));
+    });
+    
+    var taskName = 'GUB_Greenspace_' + year + '_' + seasonName;
+    
+    Export.table.toDrive({
+      collection: statsCleaned,
+      description: taskName,
+      folder: 'GUB_Greenspace_Results',
+      fileNamePrefix: taskName,
+      fileFormat: 'CSV',
+      selectors: ['ORIG_FID', 'greenspace_area_m2'] 
+    });
+    
+  });
+});

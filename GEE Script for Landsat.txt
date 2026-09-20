@@ -1,0 +1,96 @@
+var gubFeatures = ee.FeatureCollection("projects/assets/GUB_Global_2018");
+print("areas:", gubFeatures.size());
+
+var years = [2019, 2020, 2021, 2022, 2023, 2024, 2025]; 
+
+var seasons = {
+  'Spring': ['-03-01', '-06-01'],
+  'Summer': ['-06-01', '-09-01'],
+  'Autumn': ['-09-01', '-12-01'],
+  'Winter': ['-12-01', '-03-01'] 
+};
+
+function applyScaleFactors(image) {
+  var opticalBands = image.select('SR_B.').multiply(0.0000275).add(-0.2);
+  return image.addBands(opticalBands, null, true);
+}
+
+function getGreenspaceArea(startDate, endDate) {
+  var l8 = ee.ImageCollection("LANDSAT/LC08/C02/T1_L2")
+    .filterDate(startDate, endDate)
+    .filter(ee.Filter.lte('CLOUD_COVER', 100));
+    
+  var l9 = ee.ImageCollection("LANDSAT/LC09/C02/T1_L2")
+    .filterDate(startDate, endDate)
+    .filter(ee.Filter.lte('CLOUD_COVER', 100));
+    
+  var landsatCol = l8.merge(l9);
+
+  var vegMask = landsatCol.map(function(img) {
+
+    var qa = img.select('QA_PIXEL');
+    var cloudBitMask = 1 << 3; 
+    var shadowBitMask = 1 << 4; 
+    
+    var clearMask = qa.bitwiseAnd(cloudBitMask).eq(0)
+                      .and(qa.bitwiseAnd(shadowBitMask).eq(0));
+
+    var scaled = applyScaleFactors(img).updateMask(clearMask);
+    
+    var ndvi = scaled.normalizedDifference(['SR_B5', 'SR_B4']);
+    var greenVeg = ndvi.gte(0.40);
+    
+    var nirGreenRatio = scaled.select('SR_B5').divide(scaled.select('SR_B3'));
+    var senescingVeg = nirGreenRatio.gte(2.50);
+
+    var totalVeg = greenVeg.or(senescingVeg);
+    
+    return totalVeg;
+  }).max();
+
+  var vegArea = vegMask.multiply(ee.Image.pixelArea()).rename('greenspace_area_m2');
+  
+  return vegArea;
+}
+
+
+years.forEach(function(year) {
+  Object.keys(seasons).forEach(function(seasonName) {
+    
+    var startDateStr = year + seasons[seasonName][0];
+    var endDateStr;
+    
+    if (seasonName === 'Winter') {
+      endDateStr = (year + 1) + seasons[seasonName][1];
+    } else {
+      endDateStr = year + seasons[seasonName][1];
+    }
+    
+    var areaImage = getGreenspaceArea(startDateStr, endDateStr);
+    
+    var stats = areaImage.reduceRegions({
+      collection: gubFeatures,
+      reducer: ee.Reducer.sum().setOutputs(['greenspace_area_m2']), 
+      scale: 30,
+      crs: 'EPSG:4326',
+      tileScale: 16
+    });
+    
+    var statsCleaned = stats.map(function(f) {
+      var area = f.get('greenspace_area_m2');
+      return f.set('greenspace_area_m2', ee.Algorithms.If(ee.Algorithms.IsEqual(area, null), 0, area));
+    });
+    
+    var taskName = 'GUB_Greenspace_Landsat_SCLaligned_' + year + '_' + seasonName;
+    
+    Export.table.toDrive({
+      collection: statsCleaned,
+      description: taskName,
+      folder: 'GUB_Greenspace_Results_Landsat',
+      fileNamePrefix: taskName,
+      fileFormat: 'CSV',
+      selectors: ['ORIG_FID', 'greenspace_area_m2'] 
+    });
+    
+  });
+});
