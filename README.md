@@ -1,9 +1,7 @@
 # Green-inequality
 
-This code is for analyzing the seasonal urban greenspace dynamics in global human settlements (2018-2024). 
+This code is for analyzing the seasonal urban greenspace dynamics in global human settlements (2019-2025). 
 
-Urban greenspace was defined as the aggregation of three vegetation-related classes from the Dynamic World classification: trees, grass, shrub, and scrub.
-
-To capture seasonal dynamics, Dynamic World observations were aggregated by meteorological seasons—spring, summer, fall (autumn), and winter—for each year within the study period. A key aspect of this processing involved accounting for hemispheric differences in seasonal timing. Specifically, data were downloaded based on Northern Hemisphere seasons. For cities located in the Southern Hemisphere, the seasonal assignments were subsequently adjusted to ensure temporal alignment with local climatic seasons. All data were integrated into the Global Urban Boundaries (GUB) shapefiles for the reference year 2018, providing a consistent spatial framework for urban extent across the time series.
+Seasonal urban greenspace was mapped using the 20 m Copernicus Sentinel-2 Surface Reflectance (L2A) dataset, which offers a nominal 5-day revisit cycle. Specifically, urban vegetation was isolated using the native Scene Classification Layer (SCL) produced by the Sen2Cor algorithm, extracting pixels classified explicitly as vegetation (SCL = 4). Comprehensive mathematical formulations and decision-tree architectures of the Sen2Cor SCL algorithm are detailed in https://step.esa.int/thirdparties/sen2cor/2.3.0/%5BL2A-ATBD%5D%20S2PAD-ATBD-0001%20%5B2.0%5D.pdf
 
 Relevant data can be found in the Zenodo: https://zenodo.org/records/19343115.
